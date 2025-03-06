@@ -1,12 +1,13 @@
 import {
-	ActionRowBuilder,
-	ModalActionRowComponentBuilder,
+	GuildMember,
+	type GuildTextBasedChannel,
 	ModalBuilder,
 	TextInputBuilder,
 	TextInputStyle,
 } from "discord.js";
 import { makeRow } from "../helpers/djsHelpers.js";
 import type InteractionContext from "../models/InteractionContext.js";
+import MessageVariables from "../models/MessageVariables.js";
 import NeedleModal from "../models/NeedleModal.js";
 
 export default class SupportIssueModal extends NeedleModal {
@@ -14,7 +15,7 @@ export default class SupportIssueModal extends NeedleModal {
 	public get builder(): ModalBuilder {
 		const priorityInput = new TextInputBuilder()
 			.setCustomId("priority")
-			.setLabel("Priority (P1-Critical, P2-High, P3-Medium, P4-Low)")
+			.setLabel("Priority (P1, P2, P3, P4)")
 			.setRequired(true)
 			.setPlaceholder("P3")
 			.setStyle(TextInputStyle.Short)
@@ -78,22 +79,53 @@ export default class SupportIssueModal extends NeedleModal {
 			"# Issue Report",
 			`## Priority: ${priority}`,
 			"",
-			"## Issue Description",
+			"### Issue Description",
 			description,
 			"",
-			"## Steps to Reproduce",
+			"### Steps to Reproduce",
 			steps,
 			"",
-			"## Expected vs Actual",
+			"### Expected vs Actual",
 			expected,
 			"",
-			"## Environment",
+			"### Environment",
 			`Where: ${environment}`,
 			"",
 			`Reported by: ${interaction.user.toString()}`,
 		].join("\n");
 
-		await interaction.channel?.send(supportReport);
-		await context.replyInPublic("Support issue has been submitted!");
+		// First acknowledge the modal submission
+		await interaction.deferReply({ ephemeral: true });
+
+		if (interaction.channel && "guild" in interaction.channel) {
+			const guildChannel = interaction.channel as GuildTextBasedChannel;
+			console.log("Sending support report message...");
+			const sentMessage = await interaction.channel.send({
+				content: supportReport,
+			});
+			console.log("Support report message sent:", sentMessage.id);
+
+			// Force thread creation directly
+			const threadCreator = this.bot.getThreadCreationService();
+			if (threadCreator) {
+				console.log("Attempting to create thread...");
+				const messageVariables = new MessageVariables()
+					.setChannel(guildChannel)
+					.setUser(
+						interaction.member instanceof GuildMember
+							? interaction.member
+							: interaction.user,
+					);
+
+				await threadCreator.createOrUpdateThreadOnMessage(
+					sentMessage,
+					messageVariables,
+				);
+			}
+		}
+
+		await interaction.editReply({
+			content: "Support issue has been submitted!",
+		});
 	}
 }

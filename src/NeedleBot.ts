@@ -14,15 +14,16 @@ If not, see <https://www.gnu.org/licenses/>.
 */
 
 import type { Client } from "discord.js";
-import type NeedleCommand from "./models/NeedleCommand.js";
-import ListenerRunType from "./models/enums/ListenerRunType.js";
 import type NeedleButton from "./models/NeedleButton.js";
-import type DynamicImportService from "./services/DynamicImportService.js";
+import type NeedleCommand from "./models/NeedleCommand.js";
 import type NeedleEventListener from "./models/NeedleEventListener.js";
-import type ConfigService from "./services/ConfigService.js";
-import type CommandImportService from "./services/CommandImportService.js";
 import type NeedleModal from "./models/NeedleModal.js";
+import ListenerRunType from "./models/enums/ListenerRunType.js";
+import type CommandImportService from "./services/CommandImportService.js";
+import type ConfigService from "./services/ConfigService.js";
 import type CooldownService from "./services/CooldownService.js";
+import type DynamicImportService from "./services/DynamicImportService.js";
+import type ThreadCreationService from "./services/ThreadCreationService.js";
 
 export default class NeedleBot {
 	public readonly client: Client;
@@ -30,9 +31,12 @@ export default class NeedleBot {
 
 	private readonly commandsService: CommandImportService;
 	private readonly cooldownService: CooldownService;
-	private readonly eventsService: DynamicImportService<typeof NeedleEventListener>;
+	private readonly eventsService: DynamicImportService<
+		typeof NeedleEventListener
+	>;
 	private readonly buttonsService: DynamicImportService<typeof NeedleButton>;
 	private readonly modalsService: DynamicImportService<typeof NeedleModal>;
+	private readonly threadCreationService: ThreadCreationService;
 
 	private isConnected = false;
 
@@ -44,6 +48,7 @@ export default class NeedleBot {
 		modalsService: DynamicImportService<typeof NeedleModal>,
 		configService: ConfigService,
 		cooldownService: CooldownService,
+		threadCreationService: ThreadCreationService,
 	) {
 		this.client = discordClient;
 
@@ -53,6 +58,7 @@ export default class NeedleBot {
 		this.modalsService = modalsService;
 		this.configs = configService;
 		this.cooldownService = cooldownService;
+		this.threadCreationService = threadCreationService;
 	}
 
 	public async loadDynamicImports(): Promise<void> {
@@ -84,7 +90,9 @@ export default class NeedleBot {
 
 	public async getAllCommands(): Promise<NeedleCommand[]> {
 		const importedCommands = await this.commandsService.load();
-		return importedCommands.map(c => new c.Class(this.commandsService.getId(c.fileName), this));
+		return importedCommands.map(
+			(c) => new c.Class(this.commandsService.getId(c.fileName), this),
+		);
 	}
 
 	public getButton(customId: string): NeedleButton {
@@ -103,6 +111,10 @@ export default class NeedleBot {
 
 	public reportThreadRenamed(threadId: string): void {
 		this.cooldownService.reportThreadRenamed(threadId);
+	}
+
+	public getThreadCreationService(): ThreadCreationService {
+		return this.threadCreationService;
 	}
 
 	private async registerEventListeners(): Promise<void> {
@@ -130,11 +142,17 @@ export default class NeedleBot {
 			}
 		}
 
-		this.client.on("debug", msg => console.log(`[${this.getCurrentTime()}] DEBUG: ${msg}`));
-		this.client.on("shardError", (error, shardId) =>
-			console.log(`[${this.getCurrentTime()}] SHARD ERROR (id ${shardId}): ${error}`),
+		this.client.on("debug", (msg) =>
+			console.log(`[${this.getCurrentTime()}] DEBUG: ${msg}`),
 		);
-		this.client.on("warn", msg => console.log(`[${this.getCurrentTime()}] WARN: ${msg}`));
+		this.client.on("shardError", (error, shardId) =>
+			console.log(
+				`[${this.getCurrentTime()}] SHARD ERROR (id ${shardId}): ${error}`,
+			),
+		);
+		this.client.on("warn", (msg) =>
+			console.log(`[${this.getCurrentTime()}] WARN: ${msg}`),
+		);
 	}
 
 	private getCurrentTime = (): string => {

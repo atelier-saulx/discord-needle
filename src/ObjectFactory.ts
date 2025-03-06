@@ -13,11 +13,17 @@ You should have received a copy of the GNU Affero General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { Client, GatewayIntentBits, GuildMember, Options, User } from "discord.js";
+import {
+	Client,
+	GatewayIntentBits,
+	type GuildMember,
+	Options,
+	type User,
+} from "discord.js";
+import NeedleBot from "./NeedleBot.js";
 import type NeedleButton from "./models/NeedleButton.js";
 import type NeedleEventListener from "./models/NeedleEventListener.js";
 import type NeedleModal from "./models/NeedleModal.js";
-import NeedleBot from "./NeedleBot.js";
 import CommandExecutorService from "./services/CommandExecutorService.js";
 import CommandImportService from "./services/CommandImportService.js";
 import ConfigService from "./services/ConfigService.js";
@@ -32,7 +38,7 @@ import ThreadCreationService from "./services/ThreadCreationService.js";
 // We're not using any abstractions to keep complexity down, but it can be added in the future.
 
 export default class ObjectFactory {
-	private static bot: NeedleBot;
+	private static bot: NeedleBot | null = null;
 
 	private constructor() {
 		// Not allowed
@@ -50,13 +56,28 @@ export default class ObjectFactory {
 			this.createButtonsService(),
 			this.createModalsService(),
 			this.createConfigService(),
-			this.createCooldownService()
+			this.createCooldownService(),
+			null as any,
 		);
+
+		// Now create the thread service with the actual bot instance
+		const threadService = new ThreadCreationService(this.bot, true);
+
+		// Update bot's thread service field
+		(this.bot as any).threadCreationService = threadService;
 
 		return this.bot;
 	}
 
 	public static createInformationService(): InformationService {
+		// Special case for command deployment
+		if (process.argv.some((arg) => arg.includes("deploy-commands.js"))) {
+			return new InformationService(null as any);
+		}
+
+		if (!this.bot) {
+			throw new Error("Bot must be created before creating InformationService");
+		}
 		return new InformationService(this.bot);
 	}
 
@@ -64,7 +85,14 @@ export default class ObjectFactory {
 		return new CommandExecutorService();
 	}
 
-	public static createThreadCreationService(logAmountOfCreatedThreads: boolean): ThreadCreationService {
+	public static createThreadCreationService(
+		logAmountOfCreatedThreads: boolean,
+	): ThreadCreationService {
+		if (!this.bot) {
+			throw new Error(
+				"Bot must be created before creating ThreadCreationService",
+			);
+		}
 		return new ThreadCreationService(this.bot, logAmountOfCreatedThreads);
 	}
 
@@ -79,7 +107,11 @@ export default class ObjectFactory {
 		};
 
 		return new Client({
-			intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+			intents: [
+				GatewayIntentBits.Guilds,
+				GatewayIntentBits.GuildMessages,
+				GatewayIntentBits.MessageContent,
+			],
 			shards: "auto",
 			makeCache: Options.cacheWithLimits({
 				...Options.DefaultMakeCacheSettings,
@@ -92,7 +124,7 @@ export default class ObjectFactory {
 				GuildInviteManager: 0,
 				GuildMemberManager: {
 					maxSize: 5,
-					keepOverLimit: member => member.id === member.client.user.id,
+					keepOverLimit: (member) => member.id === member.client.user.id,
 				},
 				GuildMessageManager: fivePerGuildCollection,
 				GuildScheduledEventManager: 0,
@@ -107,7 +139,7 @@ export default class ObjectFactory {
 				ThreadMemberManager: fivePerGuildCollection,
 				UserManager: {
 					maxSize: 5,
-					keepOverLimit: user => user.id === user.client.user.id,
+					keepOverLimit: (user) => user.id === user.client.user.id,
 				},
 				VoiceStateManager: 0,
 			}),
@@ -121,7 +153,8 @@ export default class ObjectFactory {
 				},
 				guildMembers: {
 					interval: tenMinutes,
-					filter: () => (member: GuildMember) => member.id !== member.client.user.id,
+					filter: () => (member: GuildMember) =>
+						member.id !== member.client.user.id,
 				},
 			},
 		});
@@ -135,15 +168,23 @@ export default class ObjectFactory {
 		return new CommandImportService("./commands");
 	}
 
-	private static createEventListenersService(): DynamicImportService<typeof NeedleEventListener> {
-		return new DynamicImportService<typeof NeedleEventListener>("./eventListeners");
+	private static createEventListenersService(): DynamicImportService<
+		typeof NeedleEventListener
+	> {
+		return new DynamicImportService<typeof NeedleEventListener>(
+			"./eventListeners",
+		);
 	}
 
-	private static createButtonsService(): DynamicImportService<typeof NeedleButton> {
+	private static createButtonsService(): DynamicImportService<
+		typeof NeedleButton
+	> {
 		return new DynamicImportService<typeof NeedleButton>("./buttons");
 	}
 
-	private static createModalsService(): DynamicImportService<typeof NeedleModal> {
+	private static createModalsService(): DynamicImportService<
+		typeof NeedleModal
+	> {
 		return new DynamicImportService<typeof NeedleModal>("./modals");
 	}
 
