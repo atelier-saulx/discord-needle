@@ -65,6 +65,8 @@ export default class ThreadCreationService {
 			authorBot: message.author.bot,
 			channelId: message.channelId,
 		});
+
+		// Basic checks that always apply
 		if (message.system) return false;
 		if (!message.inGuild()) return false;
 		if (!message.channel.isTextBased()) return false;
@@ -73,33 +75,25 @@ export default class ThreadCreationService {
 		if (!message.guild?.available) return false;
 		if (message.author.id === message.client.user?.id) return false;
 		if (message.hasThread) return false;
+
+		// Special case for support issue reports
 		if (message.content.startsWith("# Issue Report")) {
 			console.log("Support issue report detected");
 			return true;
 		}
 
-		// Existing bot message check
-		if (message.author.bot) {
-			const config = this.bot.configs.get(message.guildId);
-			const channelConfig = config?.threadChannels?.find(
-				(c) =>
-					c.channelId === message.channelId ||
-					c.channelId === message.channel.parentId,
-			);
-
-			// Convert ToggleOption to boolean
-			return channelConfig?.includeBots === ToggleOption.On;
-		}
-
-		console.log("Regular message checks applying");
+		// Get the channel config
 		const guildConfig = this.bot.configs.get(message.guildId);
 		const channelConfig = guildConfig.threadChannels?.find(
 			(c) => c.channelId === message.channelId,
 		);
-		if (!channelConfig) return false;
-		if (!channelConfig.includeBots && message.author.bot) return false;
 
-		return true;
+		// If no config exists for this channel, no thread should be created
+		if (!channelConfig) return false;
+
+		// Use the new shouldCreateThreadForMessage method to check if a thread should be created
+		// based on whether the author is a bot and the configured response type
+		return channelConfig.shouldCreateThreadForMessage(message.author.bot);
 	}
 
 	public async createOrUpdateThreadOnMessage(
@@ -273,7 +267,7 @@ export default class ThreadCreationService {
 		}
 
 		return variables.removeFrom(
-			message.cleanContent + "\n\n" + embedCleanContent,
+			`${message.cleanContent}\n\n${embedCleanContent}`,
 		);
 	}
 
@@ -289,7 +283,7 @@ export default class ThreadCreationService {
 			case "red":
 				return ButtonStyle.Danger;
 			default:
-				throw new Error("Invalid button color: " + setting.toLowerCase());
+				throw new Error(`Invalid button color: ${setting.toLowerCase()}`);
 		}
 	}
 }
